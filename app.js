@@ -740,7 +740,7 @@ function runGogSend({ to, subject, bodyText }) {
   });
 }
 
-app.post('/upload', requireAccess, requireCsrf, upload.single('pdf'), async (req, res) => {
+app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req, res) => {
   const filePath = req.file?.path;
   if (!filePath) {
     const csrfToken = getOrSetCsrfToken(req, res);
