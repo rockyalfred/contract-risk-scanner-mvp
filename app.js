@@ -1013,9 +1013,8 @@ app.post('/confirm/:id/send', requireAccess, requireCsrf, async (req, res) => {
   try {
     if (EMAIL_MODE === 'copy' || EMAIL_MODE === 'disabled') {
       // Render-first mode: do not send external email from the server.
-      // Show a copy-ready email the user can send manually.
-      try { await fs.unlink(path.join(cacheDir, `${id}.json`)); } catch {}
-      return res.render('sent', { to, subject, body, mode: 'copy' });
+      // Keep the session cache briefly so the user can download the email.
+      return res.render('sent', { id, to, subject, body, cancelBy, mode: 'copy' });
     }
 
     await runGogSend({ to, subject, bodyText: body });
@@ -1025,6 +1024,89 @@ app.post('/confirm/:id/send', requireAccess, requireCsrf, async (req, res) => {
   } catch (e) {
     return res.status(500).render('confirm', { id, data, error: e.message || 'Failed to send email', csrfToken });
   }
+});
+
+app.get('/confirm/:id/download', requireAccess, async (req, res) => {
+  const id = req.params.id;
+  const cacheDir = process.env.CACHE_DIR || path.join(uploadDir, 'cache');
+
+  let data;
+  try {
+    const raw = await fs.readFile(path.join(cacheDir, `${id}.json`), 'utf8');
+    data = JSON.parse(raw);
+  } catch {
+    return res.status(404).send('Not found');
+  }
+
+  // Rebuild the email content from cached data
+  const to = (req.query?.to || '').trim();
+  const cancelBy = (req.query?.cancelBy || '').trim();
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).send('Bad request');
+  if (!cancelBy || !/^\d{4}-\d{2}-\d{2}$/.test(cancelBy)) return res.status(400).send('Bad request');
+
+  const subject = 'Contract renewal scan result: cancel-by date and clause proof';
+
+  const renewalIso = data?.renewalDate?.iso || '';
+  const noticePeriod = data?.noticePeriod ? `${data.noticePeriod.n} ${data.noticePeriod.unit}` : '';
+  const renewalEvidence = (data?.evidence?.renewal || '').trim();
+  const noticeEvidence = (data?.evidence?.notice || '').trim();
+
+  const clip = (s, max = 900) => {
+    if (!s) return '';
+    const t = String(s).trim();
+    if (t.length <= max) return t;
+    return t.slice(0, max).trimEnd() + '\n[excerpt truncated]';
+  };
+
+  const bodyLines = [];
+  bodyLines.push('Hi,');
+  bodyLines.push('');
+  bodyLines.push('Here are the results from the Contract Risk Scanner.');
+  bodyLines.push('');
+  bodyLines.push('Summary');
+  bodyLines.push(`- Cancel-by date (please verify): ${cancelBy}`);
+  if (renewalIso) bodyLines.push(`- Renewal/end date detected: ${renewalIso}`);
+  if (noticePeriod) bodyLines.push(`- Notice period detected: ${noticePeriod}`);
+  bodyLines.push('');
+
+  if (renewalEvidence) {
+    bodyLines.push('Evidence (renewal/end date)');
+    bodyLines.push(clip(renewalEvidence));
+    bodyLines.push('');
+  }
+
+  if (noticeEvidence) {
+    bodyLines.push('Evidence (notice period)');
+    bodyLines.push(clip(noticeEvidence));
+    bodyLines.push('');
+  }
+
+  if (!renewalEvidence && !noticeEvidence) {
+    bodyLines.push('Evidence');
+    bodyLines.push(clip(data.renewalClause || data.noticeClause || 'No evidence excerpt was detected automatically.'));
+    bodyLines.push('');
+  }
+
+  bodyLines.push('Next step');
+  bodyLines.push('- If this looks right, send the cancellation or non-renewal notice before the cancel-by date.');
+  bodyLines.push('');
+
+  bodyLines.push('Privacy');
+  bodyLines.push('- The uploaded PDF was deleted immediately after extraction.');
+  bodyLines.push('');
+
+  bodyLines.push('Thanks,');
+  bodyLines.push('Abhi');
+  bodyLines.push('Contract Risk Scanner');
+  bodyLines.push('contractrisk.team@gmail.com');
+  bodyLines.push('');
+
+  const body = bodyLines.join('\n');
+
+  const filename = `contract-risk-result-${cancelBy}.txt`;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(`To: ${to}\nSubject: ${subject}\n\n${body}`);
 });
 
 app.listen(PORT, () => {

@@ -25,6 +25,7 @@
         <% if (mode === 'copy') { %>
           <p class="muted" style="margin-top:6px;">Email sending is disabled in this deployment. Copy the email text below and send it manually to:</p>
           <div class="callout" style="margin-top:12px;"><code><%= to %></code></div>
+
           <div class="row" style="margin-top:12px;">
             <label>Subject</label>
             <input type="text" value="<%= subject %>" readonly />
@@ -32,6 +33,11 @@
           <div class="row" style="margin-top:12px;">
             <label>Email body</label>
             <textarea readonly><%= body %></textarea>
+          </div>
+
+          <div class="row" style="margin-top:12px;">
+            <a class="btn secondary" href="/confirm/<%= id %>/download?to=<%= encodeURIComponent(to) %>&cancelBy=<%= encodeURIComponent(cancelBy || '') %>">Download .txt</a>
+            <span class="small" style="margin-left:10px;">Tip: download gives a ready-to-send text file.</span>
           </div>
         <% } else { %>
           <p class="muted" style="margin-top:6px;">Your results were sent to:</p>
