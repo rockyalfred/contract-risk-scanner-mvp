@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sent</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Contract Risk Scanner</h1>
+        <p>Result sent</p>
+      </div>
+      <div class="kicker">
+        <span class="badge ok">Sent</span>
+        <span class="badge">Done</span>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="card">
+        <div class="h2">Success</div>
+        <p class="muted" style="margin-top:6px;">Your results were sent to:</p>
+        <div class="callout" style="margin-top:12px;"><code><%= to %></code></div>
+
+        <div class="row" style="margin-top:14px;">
+          <a class="btn primary" href="/upload">Scan another PDF</a>
+          <a class="btn secondary" href="/" style="margin-left:8px;">Home</a>
+        </div>
+
+        <div class="footerBar">
+          <div><strong>Privacy</strong><br/>The uploaded PDF was deleted immediately after extraction.</div>
+          <div><strong>Accuracy</strong><br/>Store the cancel-by date somewhere you will actually see it.</div>
+          <div><strong>Support</strong><br/>contractrisk.team@gmail.com</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

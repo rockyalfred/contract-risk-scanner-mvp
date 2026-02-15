@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Upload</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <div class="container">
+      <header class="topbar">
+      <div class="brand">
+        <h1>Contract Risk Scanner</h1>
+        <p>Upload a PDF to scan renewal and notice terms</p>
+      </div>
+      <div class="kicker">
+        <span class="badge">Step 2 of 3</span>
+        <span class="badge">Upload</span>
+        <span class="badge ok">PDF up to 10MB</span>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="card">
+        <div class="grid" style="gap:12px;">
+          <div>
+            <div class="h2">Upload contract PDF</div>
+            <p class="muted" style="margin-top:6px;">We extract evidence snippets and compute a cancel-by date when possible. You review everything before sending.</p>
+
+            <% if (error) { %>
+              <div class="row error"><%= error %></div>
+            <% } %>
+
+            <form method="post" action="/upload" enctype="multipart/form-data" style="margin-top:14px;">
+              <div class="drop">
+                <label>Select a PDF file</label>
+                <input type="file" name="pdf" accept="application/pdf" required />
+                <div class="small" style="margin-top:10px;">Tip: use a clean PDF export. Scanned images may reduce accuracy.</div>
+              </div>
+
+              <div class="row">
+                <button class="btn primary" type="submit">Scan</button>
+                <a class="btn secondary" href="/" style="margin-left:8px;">Back</a>
+              </div>
+            </form>
+
+          </div>
+
+          <div class="callout info">
+            <div class="h2">What gets extracted</div>
+            <ul class="list">
+              <li>Renewal or end date evidence</li>
+              <li>Notice period evidence for non-renewal</li>
+              <li>Rolling monthly detection (when relevant)</li>
+            </ul>
+            <div class="small" style="margin-top:10px;">
+              AI disclosure: if extraction is uncertain, we may use AI on short, redacted snippets (not the full contract). You must verify before sending.
+            </div>
+          </div>
+        </div>
+
+        <div class="footerBar">
+          <div><strong>Privacy</strong><br/>The uploaded PDF is deleted immediately after extraction.</div>
+          <div><strong>Accuracy</strong><br/>Scanned image PDFs may reduce extraction accuracy.</div>
+          <div><strong>Support</strong><br/>contractrisk.team@gmail.com</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

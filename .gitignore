@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# env / secrets
+.env
+
+# temp/editor
+*.swp
+*.swo
+.DS_Store
+
+# generated/test files
+*.pdf
+
+# logs
+*.log

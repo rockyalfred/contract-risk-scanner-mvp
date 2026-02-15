@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Review and confirm</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Contract Risk Scanner</h1>
+        <p>Review evidence, confirm cancel-by, then send</p>
+      </div>
+      <div class="kicker">
+        <span class="badge">Step 3 of 3</span>
+        <span class="badge">Review</span>
+        <% if (data.aiAssisted) { %>
+          <span class="badge ai">AI-assisted</span>
+        <% } %>
+        <% if (data.rollingMonthly) { %>
+          <span class="badge warn">Rolling monthly</span>
+        <% } %>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="grid two">
+        <section class="card">
+          <div class="h2">Sendable result</div>
+          <div class="callout info" style="margin-top:10px;">
+            <div class="small">
+              Disclosure: If automatic extraction is uncertain, this tool may use AI to help extract renewal dates and notice periods from short, redacted snippets (not the full contract). You must verify before sending.
+            </div>
+          </div>
+
+          <% if (error) { %>
+            <div class="row error"><%= error %></div>
+          <% } %>
+
+          <% if (data.docType === 'tenancy') { %>
+            <div class="row callout warn">
+              <div class="small"><strong>Heads up:</strong> This looks like a tenancy agreement. This MVP currently supports service contracts. Please enter cancel-by manually.</div>
+              <% if (data.tenancyHits && data.tenancyHits.length) { %>
+                <div class="small" style="margin-top:8px;">Detected signals: <code><%= data.tenancyHits.join(', ') %></code></div>
+              <% } %>
+            </div>
+          <% } %>
+
+          <% if (data.computeNote) { %>
+            <div class="row callout warn">
+              <div class="small">Note: <%= data.computeNote %> You may need to enter the cancel-by date manually.</div>
+            </div>
+          <% } %>
+
+          <% if (!data.computeNote && data.renewalDate && data.noticePeriod) { %>
+            <div class="row callout">
+              <div class="small">
+                Computed from renewal/end date <code><%= data.renewalDate.iso %></code> minus notice period <code><%= data.noticePeriod.n %> <%= data.noticePeriod.unit %></code>.
+              </div>
+            </div>
+          <% } %>
+
+          <form id="sendForm" method="post" action="/confirm/<%= id %>/send" style="margin-top:14px;">
+            <div class="row">
+              <label>Proposed cancel-by date</label>
+              <input name="cancelBy" value="<%= data.cancelBy ? data.cancelBy.iso : '' %>" placeholder="YYYY-MM-DD" <%= data.rollingMonthly ? '' : 'required' %> />
+              <div class="small" style="margin-top:8px;">Edit this if the evidence indicates a different deadline.</div>
+            </div>
+
+            <% if (data.rollingMonthly) { %>
+              <div class="row">
+                <label>Rolling monthly: next renewal or billing date (optional)</label>
+                <input name="nextRenewal" placeholder="YYYY-MM-DD" />
+                <div class="small" style="margin-top:8px;">If provided, we compute cancel-by using the detected notice period. Otherwise, enter cancel-by manually.</div>
+              </div>
+            <% } %>
+
+            <div class="row">
+              <label>Send results to (email)</label>
+              <input id="toField" name="to" type="email" placeholder="client@agency.com" required />
+            </div>
+
+            <div class="row">
+              <button id="sendBtn" class="btn primary" type="submit">Send results and delete</button>
+              <a class="btn secondary" href="/upload" style="margin-left:8px;">Back</a>
+            </div>
+
+            <div class="footerBar">
+              <div><strong>Privacy</strong><br/>The uploaded PDF was deleted immediately after extraction.</div>
+              <div><strong>Accuracy</strong><br/>Verify cancel-by against the evidence excerpts before sending.</div>
+              <div><strong>Support</strong><br/>contractrisk.team@gmail.com</div>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="h2">Evidence excerpts</div>
+          <p class="muted" style="margin-top:6px;">These are the exact excerpts used (or suggested) to compute your cancel-by date.</p>
+
+          <% if (data.evidence && (data.evidence.renewal || data.evidence.notice)) { %>
+            <% if (data.evidence.renewal) { %>
+              <div class="row">
+                <div class="kicker"><span class="badge">Renewal or end date</span></div>
+                <textarea readonly><%= data.evidence.renewal %></textarea>
+              </div>
+            <% } %>
+
+            <% if (data.evidence.notice) { %>
+              <div class="row">
+                <div class="kicker"><span class="badge">Notice period</span></div>
+                <textarea readonly><%= data.evidence.notice %></textarea>
+              </div>
+            <% } %>
+          <% } else { %>
+            <div class="row">
+              <textarea readonly><%= (data.renewalClause || data.noticeClause || 'No clause excerpt detected.') %></textarea>
+            </div>
+          <% } %>
+
+          <div class="footer">
+            Tip: if this is a tenancy agreement or a non-contract document, extraction may not apply. Always verify before sending.
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      var to = document.getElementById('toField');
+      var btn = document.getElementById('sendBtn');
+      if (!to || !btn) return;
+
+      function update() {
+        // Basic guard: require recipient field.
+        btn.disabled = !to.value || !to.value.includes('@');
+      }
+
+      to.addEventListener('input', update);
+      update();
+    })();
+  </script>
+</body>
+</html>
