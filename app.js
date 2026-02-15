@@ -714,6 +714,8 @@ async function aiExtractFallback({ snippets }) {
   };
 }
 
+const EMAIL_MODE = String(process.env.EMAIL_MODE || 'gog').trim().toLowerCase();
+
 function runGogSend({ to, subject, bodyText }) {
   return new Promise((resolve, reject) => {
     const account = process.env.GOG_ACCOUNT || 'contractrisk.team@gmail.com';
@@ -1009,12 +1011,19 @@ app.post('/confirm/:id/send', requireAccess, requireCsrf, async (req, res) => {
   const body = bodyLines.join('\n');
 
   try {
+    if (EMAIL_MODE === 'copy' || EMAIL_MODE === 'disabled') {
+      // Render-first mode: do not send external email from the server.
+      // Show a copy-ready email the user can send manually.
+      try { await fs.unlink(path.join(cacheDir, `${id}.json`)); } catch {}
+      return res.render('sent', { to, subject, body, mode: 'copy' });
+    }
+
     await runGogSend({ to, subject, bodyText: body });
     // delete cache
     try { await fs.unlink(path.join(cacheDir, `${id}.json`)); } catch {}
-    return res.render('sent', { to });
+    return res.render('sent', { to, mode: 'sent' });
   } catch (e) {
-    return res.status(500).render('confirm', { id, data, error: e.message || 'Failed to send email' });
+    return res.status(500).render('confirm', { id, data, error: e.message || 'Failed to send email', csrfToken });
   }
 });
 
