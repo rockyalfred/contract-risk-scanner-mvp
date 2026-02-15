@@ -63,6 +63,7 @@
           <% } %>
 
           <form id="sendForm" method="post" action="/confirm/<%= id %>/send" style="margin-top:14px;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
             <div class="row">
               <label>Proposed cancel-by date</label>
               <input name="cancelBy" value="<%= data.cancelBy ? data.cancelBy.iso : '' %>" placeholder="YYYY-MM-DD" <%= data.rollingMonthly ? '' : 'required' %> />

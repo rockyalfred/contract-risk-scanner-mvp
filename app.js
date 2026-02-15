@@ -59,6 +59,9 @@ app.use(limiter);
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3005;
 
+// Multer temp storage (also used for server-side cache/access sessions)
+const uploadDir = process.env.UPLOAD_DIR || '/tmp/contractrisk_uploads';
+
 // Access code gate
 // Provide either ACCESS_CODES (comma-separated) or ACCESS_CODE_HASHES (comma-separated sha256 hex)
 function parseCsv(v) {
@@ -80,36 +83,100 @@ function isCodeValid(code) {
   return false;
 }
 
-function requireAccess(req, res, next) {
-  const code = req.cookies?.access_code;
-  if (isCodeValid(code)) return next();
+// Server-side access session (do not store the access code in a cookie)
+const accessSessionDir = process.env.ACCESS_SESSION_DIR || path.join(uploadDir, 'access');
+await fs.mkdir(accessSessionDir, { recursive: true });
+const ACCESS_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+const allowedCodeHashes = new Set([
+  ...ACCESS_CODE_HASHES,
+  ...ACCESS_CODES.map(c => sha256Hex(c))
+]);
+
+async function createAccessSessionForCode(code) {
+  const sid = nanoid(24);
+  const payload = {
+    sid,
+    createdAt: Date.now(),
+    codeHash: sha256Hex(code)
+  };
+  await fs.writeFile(path.join(accessSessionDir, `${sid}.json`), JSON.stringify(payload), 'utf8');
+  return sid;
+}
+
+async function readAccessSession(sid) {
+  if (!sid) return null;
+  try {
+    const raw = await fs.readFile(path.join(accessSessionDir, `${sid}.json`), 'utf8');
+    const data = JSON.parse(raw);
+    if (!data?.createdAt || !data?.codeHash) return null;
+    if (Date.now() - Number(data.createdAt) > ACCESS_SESSION_TTL_MS) return null;
+    if (!allowedCodeHashes.has(String(data.codeHash))) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+async function requireAccess(req, res, next) {
+  const sid = req.cookies?.access_sid;
+  const sess = await readAccessSession(sid);
+  if (sess) return next();
   return res.redirect('/access');
 }
 
+// (moved below)
+// Lightweight CSRF (double-submit cookie)
+function getOrSetCsrfToken(req, res) {
+  let t = req.cookies?.csrf_token;
+  if (!t) {
+    t = crypto.randomBytes(24).toString('hex');
+    res.cookie('csrf_token', t, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: false // set true behind https
+    });
+  }
+  return t;
+}
+
+function requireCsrf(req, res, next) {
+  const cookieToken = req.cookies?.csrf_token;
+  const bodyToken = req.body?._csrf;
+  if (cookieToken && bodyToken && String(cookieToken) === String(bodyToken)) return next();
+  return res.status(403).send('Forbidden');
+}
+
+app.get('/access', (req, res) => {
+  const csrfToken = getOrSetCsrfToken(req, res);
+  res.render('access', { error: null, csrfToken });
+});
+
 app.get('/', (req, res) => {
+  // Ensure CSRF cookie exists early so first form submit doesn't 403
+  getOrSetCsrfToken(req, res);
   res.render('home');
 });
 
-app.get('/access', (req, res) => {
-  res.render('access', { error: null });
-});
-
-app.post('/access', (req, res) => {
+app.post('/access', requireCsrf, async (req, res) => {
   const code = (req.body?.code || '').trim();
   if (!isCodeValid(code)) {
-    return res.status(401).render('access', { error: 'Invalid access code' });
+    return res.status(401).render('access', { error: 'Invalid access code', csrfToken: req.cookies?.csrf_token || null });
   }
-  res.cookie('access_code', code, {
+
+  const sid = await createAccessSessionForCode(code);
+
+  res.cookie('access_sid', sid, {
     httpOnly: true,
     sameSite: 'lax',
     secure: false, // set true behind https
-    maxAge: 24 * 60 * 60 * 1000
+    maxAge: ACCESS_SESSION_TTL_MS
   });
+
   return res.redirect('/upload');
 });
 
 // Multer temp storage
-const uploadDir = process.env.UPLOAD_DIR || '/tmp/contractrisk_uploads';
 await fs.mkdir(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -131,8 +198,39 @@ const upload = multer({
 });
 
 app.get('/upload', requireAccess, (req, res) => {
-  res.render('upload', { error: null });
+  const csrfToken = getOrSetCsrfToken(req, res);
+  res.render('upload', { error: null, csrfToken });
 });
+
+function safeUnlink(p) {
+  return fs.unlink(p).catch(() => {});
+}
+
+async function cleanupDirOlderThan(dir, ttlMs, { max = 2500 } = {}) {
+  try {
+    const names = await fs.readdir(dir).catch(() => []);
+    const now = Date.now();
+    let n = 0;
+    for (const name of names) {
+      if (n >= max) break;
+      if (!name.endsWith('.json')) continue;
+      const p = path.join(dir, name);
+      const st = await fs.stat(p).catch(() => null);
+      if (!st) continue;
+      if (now - st.mtimeMs > ttlMs) {
+        await safeUnlink(p);
+      }
+      n++;
+    }
+  } catch {}
+}
+
+// Periodic cleanup of server-side caches (minimise retention of contract snippets)
+setInterval(() => {
+  const cacheDir = process.env.CACHE_DIR || path.join(uploadDir, 'cache');
+  cleanupDirOlderThan(cacheDir, 24 * 60 * 60 * 1000);
+  cleanupDirOlderThan(accessSessionDir, ACCESS_SESSION_TTL_MS);
+}, 30 * 60 * 1000).unref();
 
 function detectTenancy(text) {
   if (!text) return { isTenancy: false, hits: [] };
@@ -640,9 +738,12 @@ function runGogSend({ to, subject, bodyText }) {
   });
 }
 
-app.post('/upload', requireAccess, upload.single('pdf'), async (req, res) => {
+app.post('/upload', requireAccess, requireCsrf, upload.single('pdf'), async (req, res) => {
   const filePath = req.file?.path;
-  if (!filePath) return res.status(400).render('upload', { error: 'No file uploaded' });
+  if (!filePath) {
+    const csrfToken = getOrSetCsrfToken(req, res);
+    return res.status(400).render('upload', { error: 'No file uploaded', csrfToken });
+  }
 
   try {
     const buf = await fs.readFile(filePath);
@@ -775,7 +876,8 @@ app.post('/upload', requireAccess, upload.single('pdf'), async (req, res) => {
 
     return res.redirect(`/confirm/${sessionId}`);
   } catch (e) {
-    return res.status(500).render('upload', { error: e.message || 'Failed to process PDF' });
+    const csrfToken = getOrSetCsrfToken(req, res);
+    return res.status(500).render('upload', { error: e.message || 'Failed to process PDF', csrfToken });
   } finally {
     // Always delete the uploaded PDF
     try { await fs.unlink(filePath); } catch {}
@@ -785,16 +887,17 @@ app.post('/upload', requireAccess, upload.single('pdf'), async (req, res) => {
 app.get('/confirm/:id', requireAccess, async (req, res) => {
   const id = req.params.id;
   const cacheDir = process.env.CACHE_DIR || path.join(uploadDir, 'cache');
+  const csrfToken = getOrSetCsrfToken(req, res);
   try {
     const raw = await fs.readFile(path.join(cacheDir, `${id}.json`), 'utf8');
     const data = JSON.parse(raw);
-    res.render('confirm', { id, data, error: null });
+    res.render('confirm', { id, data, error: null, csrfToken });
   } catch {
     res.status(404).send('Not found');
   }
 });
 
-app.post('/confirm/:id/send', requireAccess, async (req, res) => {
+app.post('/confirm/:id/send', requireAccess, requireCsrf, async (req, res) => {
   const id = req.params.id;
   const cacheDir = process.env.CACHE_DIR || path.join(uploadDir, 'cache');
 
@@ -810,30 +913,38 @@ app.post('/confirm/:id/send', requireAccess, async (req, res) => {
   let cancelBy = (req.body?.cancelBy || '').trim();
   const nextRenewal = (req.body?.nextRenewal || '').trim();
 
-  if (!to) {
-    return res.status(400).render('confirm', { id, data, error: 'Recipient email is required' });
+  const csrfToken = getOrSetCsrfToken(req, res);
+
+  // Basic server-side validation (do not rely on browser-only checks)
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
+  if (!emailOk) {
+    return res.status(400).render('confirm', { id, data, error: 'Recipient email must be a valid email address', csrfToken });
   }
 
   // Special case: rolling monthly — if user provides next renewal/billing date, compute cancel-by.
   if ((!cancelBy || cancelBy.length === 0) && data.rollingMonthly && nextRenewal) {
     // Basic ISO date validation
     if (!/^\d{4}-\d{2}-\d{2}$/.test(nextRenewal)) {
-      return res.status(400).render('confirm', { id, data, error: 'Next renewal/billing date must be in YYYY-MM-DD format' });
+      return res.status(400).render('confirm', { id, data, error: 'Next renewal/billing date must be in YYYY-MM-DD format', csrfToken });
     }
     if (!data.noticePeriod) {
-      return res.status(400).render('confirm', { id, data, error: 'Notice period was not detected, so cancel-by cannot be computed automatically. Please enter cancel-by manually.' });
+      return res.status(400).render('confirm', { id, data, error: 'Notice period was not detected, so cancel-by cannot be computed automatically. Please enter cancel-by manually.', csrfToken });
     }
 
     const renewalDt = new Date(`${nextRenewal}T00:00:00Z`);
     const computedCancelByDt = subtractNotice(renewalDt, data.noticePeriod);
     if (!computedCancelByDt) {
-      return res.status(400).render('confirm', { id, data, error: 'Could not compute cancel-by date from the provided next renewal/billing date.' });
+      return res.status(400).render('confirm', { id, data, error: 'Could not compute cancel-by date from the provided next renewal/billing date.', csrfToken });
     }
     cancelBy = computedCancelByDt.toISOString().slice(0, 10);
   }
 
   if (!cancelBy) {
-    return res.status(400).render('confirm', { id, data, error: 'Cancel-by date is required' });
+    return res.status(400).render('confirm', { id, data, error: 'Cancel-by date is required', csrfToken });
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cancelBy)) {
+    return res.status(400).render('confirm', { id, data, error: 'Cancel-by date must be in YYYY-MM-DD format', csrfToken });
   }
 
   const subject = 'Contract renewal scan result: cancel-by date and clause proof';
