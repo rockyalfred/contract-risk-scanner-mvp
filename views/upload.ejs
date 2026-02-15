@@ -32,6 +32,7 @@
             <% } %>
 
             <form method="post" action="/upload" enctype="multipart/form-data" style="margin-top:14px;">
+              <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
               <div class="drop">
                 <label>Select a PDF file</label>
                 <input type="file" name="pdf" accept="application/pdf" required />

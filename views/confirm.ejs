@@ -63,6 +63,7 @@
           <% } %>
 
           <form id="sendForm" method="post" action="/confirm/<%= id %>/send" style="margin-top:14px;">
+            <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
             <div class="row">
               <label>Proposed cancel-by date</label>
               <input name="cancelBy" value="<%= data.cancelBy ? data.cancelBy.iso : '' %>" placeholder="YYYY-MM-DD" <%= data.rollingMonthly ? '' : 'required' %> />
@@ -83,7 +84,7 @@
             </div>
 
             <div class="row">
-              <button id="sendBtn" class="btn primary" type="submit">Send results and delete</button>
+              <button id="sendBtn" class="btn primary" type="submit">Send results (or generate email text)</button>
               <a class="btn secondary" href="/upload" style="margin-left:8px;">Back</a>
             </div>
 
