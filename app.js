@@ -594,16 +594,16 @@ async function aiExtractFallback({ snippets }) {
   ].join(' ');
 
   const user = {
-    task: 'Read the contract below and extract: 1) The contract end/renewal/expiry date (any date when the contract ends or renews), 2) The notice period required to cancel (days or months). Then compute cancel-by date: if notice period exists, cancel-by = end date minus notice period. If no notice period, cancel-by = end date.',
+    task: 'Find the cancel-by date for this contract. Look for: 1) When does contract end/renew (e.g., "ends on 2027-03-14", "renews on", "initial term", "valid until"), 2) How much notice is needed to cancel (e.g., "30 days notice", "1 month notice", "notice period"). Compute: cancel-by = end date - notice period.',
     snippets: cleaned,
     required_json_shape: {
       rollingMonthly: false,
-      renewalOrEndDate: 'YYYY-MM-DD (the contract end/renewal/expiry date)',
-      notice: { value: 'number (notice period in days or months)', unit: 'days|months' },
+      renewalOrEndDate: 'YYYY-MM-DD',
+      notice: { value: 'number', unit: 'days|months' },
       confidence: 'low|medium|high',
       evidence: { renewalSnippetIndex: 0, noticeSnippetIndex: 0 }
     },
-    instruction: 'Read the entire contract text provided. Search for: renewal/termination/end/validity dates, notice periods for cancellation, auto-renewal clauses. Return JSON with the dates you find. If contract is monthly rolling, set rollingMonthly to true.'
+    instruction: 'Example: If contract says "initial term ends on 2027-03-14" and "30 days written notice required to cancel", return: {"renewalOrEndDate": "2027-03-14", "notice": {"value": 30, "unit": "days"}, "rollingMonthly": false, "confidence": "high"}. If you find dates, return them. Do not return null if dates exist in the text.'
   };
 
   // Use Responses API (works for both chat-style and non-chat models, including Codex variants).
