@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Review and confirm</title>
+  <title>Your Results - Contract Risk Scanner</title>
   <link rel="stylesheet" href="/public/styles.css" />
 </head>
 <body>
@@ -11,11 +11,9 @@
     <header class="topbar">
       <div class="brand">
         <h1>Contract Risk Scanner</h1>
-        <p>Review evidence, confirm cancel-by, then send</p>
+        <p>Your contract analysis results</p>
       </div>
       <div class="kicker">
-        <span class="badge">Step 3 of 3</span>
-        <span class="badge">Review</span>
         <% if (data.aiAssisted) { %>
           <span class="badge ai">AI-assisted</span>
         <% } %>
@@ -28,20 +26,15 @@
     <main class="content">
       <div class="grid two">
         <section class="card">
-          <div class="h2">Sendable result</div>
-          <div class="callout info" style="margin-top:10px;">
-            <div class="small">
-              Disclosure: If automatic extraction is uncertain, this tool may use AI to help extract renewal dates and notice periods from short, redacted snippets (not the full contract). You must verify before sending.
-            </div>
-          </div>
-
+          <div class="h2">Your Cancel-By Date</div>
+          
           <% if (error) { %>
             <div class="row error"><%= error %></div>
           <% } %>
 
           <% if (data.docType === 'tenancy') { %>
             <div class="row callout warn">
-              <div class="small"><strong>Heads up:</strong> This looks like a tenancy agreement. This MVP currently supports service contracts. Please enter cancel-by manually.</div>
+              <div class="small"><strong>Heads up:</strong> This looks like a tenancy agreement. This tool supports service contracts. The date below may need verification.</div>
               <% if (data.tenancyHits && data.tenancyHits.length) { %>
                 <div class="small" style="margin-top:8px;">Detected signals: <code><%= data.tenancyHits.join(', ') %></code></div>
               <% } %>
@@ -50,7 +43,7 @@
 
           <% if (data.computeNote) { %>
             <div class="row callout warn">
-              <div class="small">Note: <%= data.computeNote %> You may need to enter the cancel-by date manually.</div>
+              <div class="small">Note: <%= data.computeNote %></div>
             </div>
           <% } %>
 
@@ -62,99 +55,66 @@
             </div>
           <% } %>
 
-          <form id="sendForm" method="post" action="/confirm/<%= id %>/send" style="margin-top:14px;">
-            <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
-            <div class="row">
-              <label>Proposed cancel-by date</label>
-              <input name="cancelBy" value="<%= data.cancelBy ? data.cancelBy.iso : '' %>" placeholder="YYYY-MM-DD" <%= data.rollingMonthly ? '' : 'required' %> />
-              <div class="small" style="margin-top:8px;">Edit this if the evidence indicates a different deadline.</div>
+          <div style="margin-top:14px;">
+            <div style="background: linear-gradient(135deg, #ff6b6b, #ee5a24); color: white; padding: 20px 24px; border-radius: 12px; font-size: 28px; font-weight: bold; margin: 12px 0; text-align: center; box-shadow: 0 4px 15px rgba(238, 90, 36, 0.3);">
+              ⏰ Your cancel date is: <%= data.cancelBy ? data.cancelBy.iso : 'Not set' %>
             </div>
+          </div>
 
-            <% if (data.rollingMonthly) { %>
-              <div class="row">
-                <label>Rolling monthly: next renewal or billing date (optional)</label>
-                <input name="nextRenewal" placeholder="YYYY-MM-DD" />
-                <div class="small" style="margin-top:8px;">If provided, we compute cancel-by using the detected notice period. Otherwise, enter cancel-by manually.</div>
-              </div>
-            <% } %>
+          <div class="row" style="margin-top:20px;">
+            <div class="h3" style="font-size:14px; margin-bottom:8px;">Export Your Results</div>
+            <form id="downloadForm" method="post" action="/confirm/<%= id %>/download-txt" style="display:inline;">
+              <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
+              <button class="btn secondary" type="submit" style="width:100%; margin-bottom:6px;">📥 Download as TXT</button>
+            </form>
+            <form id="calendarForm" method="post" action="/confirm/<%= id %>/add-calendar" style="display:inline;">
+              <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
+              <input type="hidden" name="cancelBy" value="<%= data.cancelBy ? data.cancelBy.iso : '' %>" />
+              <button class="btn secondary" type="submit" style="width:100%;">📅 Add to Calendar (Google & Outlook)</button>
+            </form>
+          </div>
 
-            <div class="row">
-              <label>Send results to (email)</label>
-              <input id="toField" name="to" type="email" placeholder="client@agency.com" required />
-            </div>
+          <div class="row" style="margin-top:16px;">
+            <a class="btn primary" href="/upload">Scan Another Contract</a>
+          </div>
 
-            <div class="row">
-              <button id="sendBtn" class="btn primary" type="submit">Send results (or generate email text)</button>
-              <a class="btn secondary" href="/upload" style="margin-left:8px;">Back</a>
-            </div>
-
-            <div class="row" style="margin-top:14px;">
-              <div class="h3" style="font-size:14px; margin-bottom:8px;">Export (works with Google Calendar & Outlook)</div>
-              <form id="downloadForm" method="post" action="/confirm/<%= id %>/download-txt" style="display:inline;">
-                <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
-                <button class="btn secondary" type="submit" style="width:100%; margin-bottom:6px;">📥 Download as TXT</button>
-              </form>
-              <form id="calendarForm" method="post" action="/confirm/<%= id %>/add-calendar" style="display:inline;">
-                <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
-                <input type="hidden" name="cancelBy" value="<%= data.cancelBy ? data.cancelBy.iso : '' %>" />
-                <button class="btn secondary" type="submit" style="width:100%;">📅 Add to Calendar (Google & Outlook)</button>
-              </form>
-            </div>
-
-            <div class="footerBar">
-              <div><strong>Privacy</strong><br/>The uploaded PDF was deleted immediately after extraction.</div>
-              <div><strong>Accuracy</strong><br/>Verify cancel-by against the evidence excerpts before sending.</div>
-              <div><strong>Support</strong><br/>contractrisk.team@gmail.com</div>
-            </div>
-          </form>
+          <div class="footerBar">
+            <div><strong>Privacy</strong><br/>The uploaded PDF was deleted immediately after extraction.</div>
+            <div><strong>Accuracy</strong><br/>Always verify the cancel-by date against the evidence.</div>
+            <div><strong>Support</strong><br/>contractrisk.team@gmail.com</div>
+          </div>
         </section>
 
         <section class="card">
-          <div class="h2">Evidence excerpts</div>
-          <p class="muted" style="margin-top:6px;">These are the exact excerpts used (or suggested) to compute your cancel-by date.</p>
+          <div class="h2">📋 Evidence Excerpts</div>
+          <p class="muted" style="margin-top:6px;">These excerpts were used to compute your cancel-by date.</p>
 
           <% if (data.evidence && (data.evidence.renewal || data.evidence.notice)) { %>
             <% if (data.evidence.renewal) { %>
-              <div class="row">
-                <div class="kicker"><span class="badge">Renewal or end date</span></div>
-                <textarea readonly><%= data.evidence.renewal %></textarea>
+              <div style="background: #f8f9fa; border-left: 4px solid #17a2b8; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 16px;">
+                <div style="font-size: 12px; text-transform: uppercase; color: #17a2b8; font-weight: bold; margin-bottom: 8px;">📅 Renewal / End Date</div>
+                <div style="background: white; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 14px; color: #333; line-height: 1.5; border: 1px solid #e9ecef;"><%= data.evidence.renewal %></div>
               </div>
             <% } %>
 
             <% if (data.evidence.notice) { %>
-              <div class="row">
-                <div class="kicker"><span class="badge">Notice period</span></div>
-                <textarea readonly><%= data.evidence.notice %></textarea>
+              <div style="background: #f8f9fa; border-left: 4px solid #28a745; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 16px;">
+                <div style="font-size: 12px; text-transform: uppercase; color: #28a745; font-weight: bold; margin-bottom: 8px;">⏳ Notice Period</div>
+                <div style="background: white; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 14px; color: #333; line-height: 1.5; border: 1px solid #e9ecef;"><%= data.evidence.notice %></div>
               </div>
             <% } %>
           <% } else { %>
-            <div class="row">
-              <textarea readonly><%= (data.renewalClause || data.noticeClause || 'No clause excerpt detected.') %></textarea>
+            <div style="background: #f8f9fa; border-left: 4px solid #6c757d; padding: 16px; border-radius: 0 8px 8px 0;">
+              <div style="background: white; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 14px; color: #333; line-height: 1.5; border: 1px solid #e9ecef;"><%= (data.renewalClause || data.noticeClause || 'No clause excerpt detected.') %></div>
             </div>
           <% } %>
 
           <div class="footer">
-            Tip: if this is a tenancy agreement or a non-contract document, extraction may not apply. Always verify before sending.
+            Tip: If this is a tenancy agreement or non-contract document, extraction may not apply. Always verify before taking action.
           </div>
         </section>
       </div>
     </main>
   </div>
-
-  <script>
-    (function () {
-      var to = document.getElementById('toField');
-      var btn = document.getElementById('sendBtn');
-      if (!to || !btn) return;
-
-      function update() {
-        // Basic guard: require recipient field.
-        btn.disabled = !to.value || !to.value.includes('@');
-      }
-
-      to.addEventListener('input', update);
-      update();
-    })();
-  </script>
 </body>
 </html>

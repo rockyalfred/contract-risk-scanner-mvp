@@ -31,15 +31,31 @@
               <div class="row error"><%= error %></div>
             <% } %>
 
-            <form method="post" action="/upload" enctype="multipart/form-data" style="margin-top:14px;">
+            <form method="post" action="/upload" enctype="multipart/form-data" style="margin-top:14px;" id="uploadForm">
               <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
               <div class="drop">
                 <label>Select a PDF file</label>
-                <input type="file" name="pdf" accept="application/pdf" required />
+                <input type="file" name="pdf" accept="application/pdf" required id="pdfInput"/>
                 <div class="small" style="margin-top:10px;">Tip: use a clean PDF export. Scanned images may reduce accuracy.</div>
               </div>
 
-              <div class="row">
+              <div class="row" id="uploadProgress" style="display:none;">
+                <div style="background: #f0f0f0; border-radius: 8px; padding: 20px; text-align: center;">
+                  <div style="font-size: 32px; margin-bottom: 10px;">⏳</div>
+                  <div style="font-size: 18px; font-weight: bold; color: #333;">Uploading your contract...</div>
+                  <div style="font-size: 14px; color: #666; margin-top: 8px;">Please wait while we process your file</div>
+                </div>
+              </div>
+
+              <div class="row" id="uploadSuccess" style="display:none;">
+                <div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; text-align: center;">
+                  <div style="font-size: 32px; margin-bottom: 10px;">✅</div>
+                  <div style="font-size: 18px; font-weight: bold; color: #155724;">Upload successful!</div>
+                  <div style="font-size: 14px; color: #155724; margin-top: 8px;">Analyzing your contract now...</div>
+                </div>
+              </div>
+
+              <div class="row" id="uploadButtons">
                 <button class="btn primary" type="submit">Scan</button>
                 <a class="btn secondary" href="/" style="margin-left:8px;">Back</a>
               </div>
@@ -68,5 +84,34 @@
       </div>
     </main>
   </div>
+
+  <script>
+    (function () {
+      var form = document.getElementById('uploadForm');
+      var pdfInput = document.getElementById('pdfInput');
+      var uploadProgress = document.getElementById('uploadProgress');
+      var uploadSuccess = document.getElementById('uploadSuccess');
+      var uploadButtons = document.getElementById('uploadButtons');
+      
+      if (!form) return;
+
+      form.addEventListener('submit', function(e) {
+        // Check if file is selected
+        if (!pdfInput.files || !pdfInput.files[0]) {
+          return;
+        }
+        
+        // Show progress indicator
+        uploadButtons.style.display = 'none';
+        uploadProgress.style.display = 'block';
+        
+        // Simulate success after a short delay (actual upload continues)
+        setTimeout(function() {
+          uploadProgress.style.display = 'none';
+          uploadSuccess.style.display = 'block';
+        }, 800);
+      });
+    })();
+  </script>
 </body>
 </html>

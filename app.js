@@ -796,10 +796,11 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
     const needsAi = !computed || (!computed.rollingMonthly && (!computed.renewal || !computed.notice || !computed.cancelBy));
 
     if (!isTenancyDoc && needsAi && !computed.rollingMonthly) {
-      // Send up to 6 snippets (3 renewal-ish + 3 notice-ish) for better AI extraction.
-      const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary)/i, { windowChars: 1100, max: 3 });
-      const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal)/i, { windowChars: 1100, max: 3 });
-      const aiSnippets = [...renewalWins, ...noticeWins].slice(0, 6);
+      // Send up to 8 snippets (4 renewal-ish + 4 notice-ish) for better AI extraction.
+      // Include contract period patterns like "from date to date" to catch end dates
+      const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary|contract\s+period|from\s+\d|period\s+of\s+\d)/i, { windowChars: 1100, max: 4 });
+      const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal)/i, { windowChars: 1100, max: 4 });
+      const aiSnippets = [...renewalWins, ...noticeWins].slice(0, 8);
 
       const ai = await aiExtractFallback({ snippets: aiSnippets });
       if (ai?.error) {
