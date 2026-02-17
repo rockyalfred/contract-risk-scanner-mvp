@@ -800,9 +800,12 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
     // Try AI extraction
     if (!isTenancyDoc && AI_ENABLED) {
       console.log('[DEBUG] AI extraction triggered');
-      const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary|contract\s+period|from\s+\d|period\s+of\s+\d)/i, { windowChars: 1100, max: 4 });
-      const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal)/i, { windowChars: 1100, max: 4 });
-      const aiSnippets = [...renewalWins, ...noticeWins].slice(0, 8);
+      // Expanded patterns to catch more date contexts in contracts
+      const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary|contract\s+period|from\s+\d|period\s+of\s+\d|commencement|start\s+date|ending|till|dated?\s+\d|period\s+beginning)/i, { windowChars: 1500, max: 6 });
+      const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal|notice\s+of\s+non)/i, { windowChars: 1500, max: 6 });
+      // Also extract any date patterns to help AI
+      const dateWins = extractTopWindows(text, /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}/i, { windowChars: 800, max: 4 });
+      const aiSnippets = [...renewalWins, ...noticeWins, ...dateWins].slice(0, 12);
       const ai = await aiExtractFallback({ snippets: aiSnippets });
       console.log('[DEBUG] AI result:', ai);
       
