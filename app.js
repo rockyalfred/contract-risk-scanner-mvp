@@ -22,8 +22,13 @@ import { execFile } from 'child_process';
 
 // AI extraction (fallback-only)
 const AI_ENABLED = String(process.env.AI_ENABLED || '').trim() === '1';
-const AI_MODEL = String(process.env.AI_MODEL || 'gpt-5.1-codex').trim();
+const AI_MODEL = String(process.env.AI_MODEL || 'gpt-4o').trim();
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
+
+// Debug logs
+console.log('[DEBUG] AI_ENABLED:', AI_ENABLED);
+console.log('[DEBUG] OPENAI_API_KEY set:', !!OPENAI_API_KEY);
+console.log('[DEBUG] OPENAI_API_KEY starts with:', OPENAI_API_KEY.substring(0, 10));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -794,10 +799,12 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
     
     // Try AI extraction
     if (!isTenancyDoc && AI_ENABLED) {
+      console.log('[DEBUG] AI extraction triggered');
       const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary|contract\s+period|from\s+\d|period\s+of\s+\d)/i, { windowChars: 1100, max: 4 });
       const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal)/i, { windowChars: 1100, max: 4 });
       const aiSnippets = [...renewalWins, ...noticeWins].slice(0, 8);
       const ai = await aiExtractFallback({ snippets: aiSnippets });
+      console.log('[DEBUG] AI result:', ai);
       
       if (ai && !ai.error) {
         if (ai.rollingMonthly) {
