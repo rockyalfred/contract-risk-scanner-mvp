@@ -664,7 +664,11 @@ async function aiExtractFallback({ snippets }) {
     }
   }
 
-  let parsed = await parseJsonOnce(content);
+  // Strip markdown code blocks before parsing
+  const cleanedContent = content.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+  console.log('[DEBUG AI] Cleaned content:', cleanedContent.substring(0, 100));
+
+  let parsed = await parseJsonOnce(cleanedContent);
 
   // One retry with stricter prompt if JSON missing or malformed.
   if (!parsed) {
