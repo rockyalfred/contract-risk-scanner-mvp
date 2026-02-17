@@ -594,16 +594,16 @@ async function aiExtractFallback({ snippets }) {
   ].join(' ');
 
   const user = {
-    task: 'Extract values to compute cancel-by date. If there is a notice period: cancel-by = end date - notice period. If there is NO notice period: cancel-by = end date (the contract end date is the cancel-by date).',
+    task: 'CRITICAL: You MUST extract BOTH the contract end/renewal date AND the notice period to compute the cancel-by date. Cancel-by = end date minus notice period. If no notice period exists, cancel-by = end date.',
     snippets: cleaned,
     required_json_shape: {
       rollingMonthly: false,
-      renewalOrEndDate: 'YYYY-MM-DD (the contract end/renewal date) or null',
-      notice: { value: 'number (notice period in days/months) or null if no notice period specified', unit: 'days|months|null' },
+      renewalOrEndDate: 'YYYY-MM-DD (MUST find the contract end or renewal date)',
+      notice: { value: 'number (MUST find notice period in days or months, e.g., 30, 60, 90)', unit: 'days|months' },
       confidence: 'low|medium|high',
-      evidence: { renewalSnippetIndex: 'number or null', noticeSnippetIndex: 'number or null' }
+      evidence: { renewalSnippetIndex: 'number (index in snippets array for the end date)', noticeSnippetIndex: 'number (index in snippets array for the notice period)' }
     },
-    instruction: 'Return exactly one JSON object matching required_json_shape. If no notice period is found in the contract, set notice to null. The cancel-by date should equal the end date when there is no notice period.'
+    instruction: 'Search through snippets for: 1) Any date that could be a contract end/renewal/expiry date (look for "ends on", "expires", "valid until", "term ends", "renewal date", "contract period from X to Y"). 2) Any notice period (look for "notice period", "written notice", "days notice", "months notice"). Return BOTH values. If only notice is found but no end date, return notice but leave end date as null.'
   };
 
   // Use Responses API (works for both chat-style and non-chat models, including Codex variants).
