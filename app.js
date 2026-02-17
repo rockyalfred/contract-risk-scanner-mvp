@@ -589,16 +589,16 @@ async function aiExtractFallback({ snippets }) {
   ].join(' ');
 
   const user = {
-    task: 'Extract values needed to compute cancel-by date as renewalOrEndDate minus notice.',
+    task: 'Extract values to compute cancel-by date. If there is a notice period: cancel-by = end date - notice period. If there is NO notice period: cancel-by = end date (the contract end date is the cancel-by date).',
     snippets: cleaned,
     required_json_shape: {
       rollingMonthly: false,
-      renewalOrEndDate: 'YYYY-MM-DD or null',
-      notice: { value: 'number or null', unit: 'days|months|null' },
+      renewalOrEndDate: 'YYYY-MM-DD (the contract end/renewal date) or null',
+      notice: { value: 'number (notice period in days/months) or null if no notice period specified', unit: 'days|months|null' },
       confidence: 'low|medium|high',
       evidence: { renewalSnippetIndex: 'number or null', noticeSnippetIndex: 'number or null' }
     },
-    instruction: 'Return exactly one JSON object matching required_json_shape. Ensure evidence indexes refer to snippets array positions.'
+    instruction: 'Return exactly one JSON object matching required_json_shape. If no notice period is found in the contract, set notice to null. The cancel-by date should equal the end date when there is no notice period.'
   };
 
   // Use Responses API (works for both chat-style and non-chat models, including Codex variants).
@@ -810,15 +810,30 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
             aiAssisted: true,
             evidence: { renewal: null, notice: null }
           };
-        } else if (ai.renewalOrEndDate && ai.notice) {
-          const renewalDt = new Date(`${ai.renewalOrEndDate}T00:00:00Z`);
-          const noticeObj = { n: ai.notice.value, unit: ai.notice.unit };
-          const cancelByDt = subtractNotice(renewalDt, noticeObj);
-          if (cancelByDt) {
+        } else if (ai.renewalOrEndDate) {
+          // Handle both cases: with notice period (end date - notice) or without (end date = cancel date)
+          if (ai.notice && ai.notice.value && ai.notice.unit) {
+            // Has notice period: cancel-by = end date - notice
+            const renewalDt = new Date(`${ai.renewalOrEndDate}T00:00:00Z`);
+            const noticeObj = { n: ai.notice.value, unit: ai.notice.unit };
+            const cancelByDt = subtractNotice(renewalDt, noticeObj);
+            if (cancelByDt) {
+              computed = {
+                cancelBy: { iso: cancelByDt.toISOString().slice(0, 10), note: `AI: computed from ${ai.renewalOrEndDate} minus ${noticeObj.n} ${noticeObj.unit}. Please verify.` },
+                renewal: { iso: ai.renewalOrEndDate, note: 'AI-extracted renewal/end date; please verify.' },
+                notice: noticeObj,
+                rollingMonthly: false,
+                note: null,
+                aiAssisted: true,
+                evidence: { renewal: null, notice: null }
+              };
+            }
+          } else {
+            // No notice period: cancel-by = end date
             computed = {
-              cancelBy: { iso: cancelByDt.toISOString().slice(0, 10), note: `AI: computed from ${ai.renewalOrEndDate} minus ${noticeObj.n} ${noticeObj.unit}. Please verify.` },
+              cancelBy: { iso: ai.renewalOrEndDate, note: 'AI: No notice period found. Cancel-by = end date. Please verify.' },
               renewal: { iso: ai.renewalOrEndDate, note: 'AI-extracted renewal/end date; please verify.' },
-              notice: noticeObj,
+              notice: null,
               rollingMonthly: false,
               note: null,
               aiAssisted: true,
