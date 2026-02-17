@@ -574,18 +574,23 @@ function isIsoDate(s) {
 }
 
 async function aiExtractFallback({ snippets }) {
+  console.log('[DEBUG AI] Function called, AI_ENABLED:', AI_ENABLED);
   if (!AI_ENABLED) return null;
   if (!OPENAI_API_KEY || !OPENAI_API_KEY.trim()) return { error: 'AI is enabled but OPENAI_API_KEY is not set.' };
+  console.log('[DEBUG AI] OPENAI_API_KEY starts with:', OPENAI_API_KEY.substring(0, 10));
+  console.log('[DEBUG AI] AI_MODEL:', AI_MODEL);
 
   const cleaned = (Array.isArray(snippets) ? snippets : [])
     .map(s => redactForAi(String(s)).slice(0, 2400))
     .filter(Boolean);
 
+  console.log('[DEBUG AI] Cleaned snippets count:', cleaned.length);
   if (!cleaned.length) return null;
 
   const sys = 'Extract dates. Return ONLY JSON: {"renewalOrEndDate":"YYYY-MM-DD","notice":{"value":30,"unit":"days"},"rollingMonthly":false,"confidence":"high"}. Use null if not found.';
 
   const user = 'Find: 1) End/renewal date ("ends on 2027-03-14"), 2) Notice period ("30 days notice"). Text: ' + cleaned.join(' ').slice(0, 3000);
+  console.log('[DEBUG AI] User prompt length:', user.length);
 
   // Use Responses API (works for both chat-style and non-chat models, including Codex variants).
   const body = {
@@ -620,12 +625,14 @@ async function aiExtractFallback({ snippets }) {
   }
 
   const data = await resp.json();
+  console.log('[DEBUG AI] Response status:', resp.status, 'data keys:', Object.keys(data));
 
   // Responses API returns an array of output items; we want the combined text.
   let content = null;
   try {
     if (typeof data?.output_text === 'string' && data.output_text.trim()) {
       content = data.output_text;
+      console.log('[DEBUG AI] Got content from output_text');
     } else if (Array.isArray(data?.output)) {
       const parts = [];
       for (const item of data.output) {
@@ -637,10 +644,17 @@ async function aiExtractFallback({ snippets }) {
         }
       }
       content = parts.join('');
+      console.log('[DEBUG AI] Got content from output array, length:', content.length);
     }
-  } catch {}
+  } catch (e) {
+    console.log('[DEBUG AI] Content extraction error:', e.message);
+  }
 
-  if (!content) return { error: 'AI returned empty content.' };
+  if (!content) {
+    console.log('[DEBUG AI] No content extracted, returning error');
+    return { error: 'AI returned empty content.' };
+  }
+  console.log('[DEBUG AI] Raw content:', content.substring(0, 200));
 
   async function parseJsonOnce(txt) {
     try {
@@ -789,11 +803,13 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
 
     // AI fallback - only if regex didn't find dates
     const isTenancyDoc = tenancy.isTenancy;
+    console.log('[DEBUG] Before AI check:', { isTenancyDoc, AI_ENABLED, hasComputedCancelBy: computed?.cancelBy });
     
     if (!isTenancyDoc && AI_ENABLED && (!computed || !computed.cancelBy)) {
       console.log('[DEBUG] AI extraction triggered as fallback');
       // Send full contract text to AI (truncate if too long for context limit)
       const fullText = text.slice(0, 15000);
+      console.log('[DEBUG] Sending text length:', fullText.length);
       const ai = await aiExtractFallback({ snippets: [fullText] });
       console.log('[DEBUG] AI result:', ai);
       
