@@ -806,6 +806,8 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
       // Also extract any date patterns to help AI
       const dateWins = extractTopWindows(text, /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}/i, { windowChars: 800, max: 4 });
       const aiSnippets = [...renewalWins, ...noticeWins, ...dateWins].slice(0, 12);
+      console.log('[DEBUG] Snippets sent to AI:', aiSnippets.length);
+      console.log('[DEBUG] First snippet preview:', aiSnippets[0]?.substring(0, 200));
       const ai = await aiExtractFallback({ snippets: aiSnippets });
       console.log('[DEBUG] AI result:', ai);
       
