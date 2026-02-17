@@ -89,7 +89,7 @@
             </div>
 
             <div class="row" style="margin-top:14px;">
-              <div class="h3" style="font-size:14px; margin-bottom:8px;">Export options</div>
+              <div class="h3" style="font-size:14px; margin-bottom:8px;">Export (works with Google Calendar & Outlook)</div>
               <form id="downloadForm" method="post" action="/confirm/<%= id %>/download-txt" style="display:inline;">
                 <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
                 <button class="btn secondary" type="submit" style="width:100%; margin-bottom:6px;">📥 Download as TXT</button>
@@ -97,7 +97,7 @@
               <form id="calendarForm" method="post" action="/confirm/<%= id %>/add-calendar" style="display:inline;">
                 <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>" />
                 <input type="hidden" name="cancelBy" value="<%= data.cancelBy ? data.cancelBy.iso : '' %>" />
-                <button class="btn secondary" type="submit" style="width:100%;">📅 Add to Calendar</button>
+                <button class="btn secondary" type="submit" style="width:100%;">📅 Add to Calendar (Google & Outlook)</button>
               </form>
             </div>
 
