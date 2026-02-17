@@ -784,14 +784,15 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
         }
       };
     } else {
-      computed = proposeCancelByFromRenewalMinusNotice({ renewalText: renewalCombined, noticeText: noticeCombined });
+      // No heuristic fallback - wait for AI extraction
+      computed = null;
     }
 
-    // AI is now the PRIMARY extraction method - more reliable for complex date formats
-    // Heuristics serve as fallback if AI is disabled or fails
+    // AI-only extraction - no regex/heuristics fallback
+    // If AI fails, user must enter cancel-by date manually
     const isTenancyDoc = tenancy.isTenancy;
     
-    // Try AI first if enabled
+    // Try AI extraction
     if (!isTenancyDoc && AI_ENABLED) {
       const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary|contract\s+period|from\s+\d|period\s+of\s+\d)/i, { windowChars: 1100, max: 4 });
       const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal)/i, { windowChars: 1100, max: 4 });
@@ -828,13 +829,16 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
       }
     }
 
-    // Fallback to heuristics if AI didn't produce results
+    // If no computed result (AI disabled or failed), prompt user to enter manually
     if (!computed || !computed.cancelBy) {
-      if (isTenancyDoc) {
-        computed = { cancelBy: null, renewal: null, notice: null, rollingMonthly: false, note: 'This looks like a tenancy agreement; this MVP supports service contracts. Please enter cancel-by manually.', evidence: { renewal: null, notice: null } };
-      } else {
-        computed = proposeCancelByFromRenewalMinusNotice({ renewalText: renewalCombined, noticeText: noticeCombined });
-      }
+      computed = { 
+        cancelBy: null, 
+        renewal: null, 
+        notice: null, 
+        rollingMonthly: false, 
+        note: AI_ENABLED ? 'Could not extract dates automatically. Please enter cancel-by date manually.' : 'AI extraction is disabled. Please enter cancel-by date manually.',
+        evidence: { renewal: null, notice: null } 
+      };
     }
 
     let cancelBy = computed.cancelBy;
