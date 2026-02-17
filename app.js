@@ -594,16 +594,16 @@ async function aiExtractFallback({ snippets }) {
   ].join(' ');
 
   const user = {
-    task: 'CRITICAL: You MUST extract BOTH the contract end/renewal date AND the notice period to compute the cancel-by date. Cancel-by = end date minus notice period. If no notice period exists, cancel-by = end date.',
+    task: 'Read the contract below and extract: 1) The contract end/renewal/expiry date (any date when the contract ends or renews), 2) The notice period required to cancel (days or months). Then compute cancel-by date: if notice period exists, cancel-by = end date minus notice period. If no notice period, cancel-by = end date.',
     snippets: cleaned,
     required_json_shape: {
       rollingMonthly: false,
-      renewalOrEndDate: 'YYYY-MM-DD (MUST find the contract end or renewal date)',
-      notice: { value: 'number (MUST find notice period in days or months, e.g., 30, 60, 90)', unit: 'days|months' },
+      renewalOrEndDate: 'YYYY-MM-DD (the contract end/renewal/expiry date)',
+      notice: { value: 'number (notice period in days or months)', unit: 'days|months' },
       confidence: 'low|medium|high',
-      evidence: { renewalSnippetIndex: 'number (index in snippets array for the end date)', noticeSnippetIndex: 'number (index in snippets array for the notice period)' }
+      evidence: { renewalSnippetIndex: 0, noticeSnippetIndex: 0 }
     },
-    instruction: 'Search through snippets for: 1) Any date that could be a contract end/renewal/expiry date (look for "ends on", "expires", "valid until", "term ends", "renewal date", "contract period from X to Y"). 2) Any notice period (look for "notice period", "written notice", "days notice", "months notice"). Return BOTH values. If only notice is found but no end date, return notice but leave end date as null.'
+    instruction: 'Read the entire contract text provided. Search for: renewal/termination/end/validity dates, notice periods for cancellation, auto-renewal clauses. Return JSON with the dates you find. If contract is monthly rolling, set rollingMonthly to true.'
   };
 
   // Use Responses API (works for both chat-style and non-chat models, including Codex variants).
@@ -793,22 +793,16 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
       computed = null;
     }
 
-    // AI-only extraction - no regex/heuristics fallback
+    // AI-only extraction - send full contract text for AI to understand naturally
     // If AI fails, user must enter cancel-by date manually
     const isTenancyDoc = tenancy.isTenancy;
     
-    // Try AI extraction
+    // Try AI extraction - send full contract text
     if (!isTenancyDoc && AI_ENABLED) {
-      console.log('[DEBUG] AI extraction triggered');
-      // Expanded patterns to catch more date contexts in contracts
-      const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary|contract\s+period|from\s+\d|period\s+of\s+\d|commencement|start\s+date|ending|till|dated?\s+\d|period\s+beginning)/i, { windowChars: 1500, max: 6 });
-      const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal|notice\s+of\s+non)/i, { windowChars: 1500, max: 6 });
-      // Also extract any date patterns to help AI
-      const dateWins = extractTopWindows(text, /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}/i, { windowChars: 800, max: 4 });
-      const aiSnippets = [...renewalWins, ...noticeWins, ...dateWins].slice(0, 12);
-      console.log('[DEBUG] Snippets sent to AI:', aiSnippets.length);
-      console.log('[DEBUG] First snippet preview:', aiSnippets[0]?.substring(0, 200));
-      const ai = await aiExtractFallback({ snippets: aiSnippets });
+      console.log('[DEBUG] AI extraction triggered with full text');
+      // Send full contract text to AI (truncate if too long for context limit)
+      const fullText = text.slice(0, 15000);
+      const ai = await aiExtractFallback({ snippets: [fullText] });
       console.log('[DEBUG] AI result:', ai);
       
       if (ai && !ai.error) {
