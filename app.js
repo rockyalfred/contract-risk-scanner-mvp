@@ -787,72 +787,57 @@ app.post('/upload', requireAccess, upload.single('pdf'), requireCsrf, async (req
       computed = proposeCancelByFromRenewalMinusNotice({ renewalText: renewalCombined, noticeText: noticeCombined });
     }
 
-    let cancelBy = computed.cancelBy;
-
-    // AI fallback only when we don't have a reliable computed answer.
-    // We also avoid AI when rolling monthly is detected by heuristics.
-    // Also avoid AI when we detected the document looks like a tenancy agreement.
+    // AI is now the PRIMARY extraction method - more reliable for complex date formats
+    // Heuristics serve as fallback if AI is disabled or fails
     const isTenancyDoc = tenancy.isTenancy;
-    const needsAi = !computed || (!computed.rollingMonthly && (!computed.renewal || !computed.notice || !computed.cancelBy));
-
-    if (!isTenancyDoc && needsAi && !computed.rollingMonthly) {
-      // Send up to 8 snippets (4 renewal-ish + 4 notice-ish) for better AI extraction.
-      // Include contract period patterns like "from date to date" to catch end dates
+    
+    // Try AI first if enabled
+    if (!isTenancyDoc && AI_ENABLED) {
       const renewalWins = extractTopWindows(text, /(auto\s*renew|renewal|renews|roll\s*over|extend|extension|term\s+renew|automatic\s+renewal|expires?|end\s+date|valid\s+until|shall\s+end|anniversary|contract\s+period|from\s+\d|period\s+of\s+\d)/i, { windowChars: 1100, max: 4 });
       const noticeWins = extractTopWindows(text, /(notice\s+period|\bnotice\b\s+of\s+termination|give\s+notice|written\s+notice|termination\s+notice|prior\s+written\s+notice|non-?renewal|prevent\s+renewal)/i, { windowChars: 1100, max: 4 });
       const aiSnippets = [...renewalWins, ...noticeWins].slice(0, 8);
-
       const ai = await aiExtractFallback({ snippets: aiSnippets });
-      if (ai?.error) {
-        computed = { ...computed, note: (computed.note || '') + (computed.note ? ' ' : '') + `AI fallback unavailable: ${ai.error}` };
-      } else if (ai) {
+      
+      if (ai && !ai.error) {
         if (ai.rollingMonthly) {
           computed = {
             cancelBy: null,
             renewal: null,
             notice: ai.notice ? { n: ai.notice.value, unit: ai.notice.unit } : null,
             rollingMonthly: true,
-            note: ai.notice
-              ? 'Rolling monthly detected by AI. Provide your next renewal/billing date to compute cancel-by, or enter cancel-by manually.'
-              : 'Rolling monthly detected by AI. Please enter cancel-by manually.',
+            note: ai.notice ? 'Rolling monthly detected by AI. Provide your next renewal/billing date to compute cancel-by, or enter cancel-by manually.' : 'Rolling monthly detected by AI. Please enter cancel-by manually.',
             aiAssisted: true,
-            evidence: {
-              renewal: aiSnippets[ai?.evidence?.renewalSnippetIndex ?? 0] ? String(aiSnippets[ai?.evidence?.renewalSnippetIndex ?? 0]).slice(0, 900) : null,
-              notice: aiSnippets[ai?.evidence?.noticeSnippetIndex ?? 0] ? String(aiSnippets[ai?.evidence?.noticeSnippetIndex ?? 0]).slice(0, 900) : null
-            }
+            evidence: { renewal: null, notice: null }
           };
-          cancelBy = null;
         } else if (ai.renewalOrEndDate && ai.notice) {
           const renewalDt = new Date(`${ai.renewalOrEndDate}T00:00:00Z`);
           const noticeObj = { n: ai.notice.value, unit: ai.notice.unit };
           const cancelByDt = subtractNotice(renewalDt, noticeObj);
-
           if (cancelByDt) {
-            const iso = cancelByDt.toISOString().slice(0, 10);
-            const renewalSnippet = aiSnippets[ai?.evidence?.renewalSnippetIndex ?? 0] || null;
-            const noticeSnippet = aiSnippets[ai?.evidence?.noticeSnippetIndex ?? 0] || null;
-
             computed = {
-              cancelBy: { iso, note: `AI-assisted: computed as renewal/end date (${ai.renewalOrEndDate}) minus notice (${noticeObj.n} ${noticeObj.unit}). Please verify.` },
-              renewal: { iso: ai.renewalOrEndDate, note: 'AI-assisted renewal/end date; please verify against the contract.' },
+              cancelBy: { iso: cancelByDt.toISOString().slice(0, 10), note: `AI: computed from ${ai.renewalOrEndDate} minus ${noticeObj.n} ${noticeObj.unit}. Please verify.` },
+              renewal: { iso: ai.renewalOrEndDate, note: 'AI-extracted renewal/end date; please verify.' },
               notice: noticeObj,
               rollingMonthly: false,
               note: null,
               aiAssisted: true,
-              evidence: {
-                renewal: renewalSnippet ? String(renewalSnippet).slice(0, 900) : null,
-                notice: noticeSnippet ? String(noticeSnippet).slice(0, 900) : null
-              }
+              evidence: { renewal: null, notice: null }
             };
-            cancelBy = computed.cancelBy;
-          } else {
-            computed = { ...computed, note: (computed.note || '') + (computed.note ? ' ' : '') + 'AI returned values but cancel-by could not be computed.' };
           }
-        } else {
-          computed = { ...computed, note: (computed.note || '') + (computed.note ? ' ' : '') + 'AI fallback did not return enough information.' };
         }
       }
     }
+
+    // Fallback to heuristics if AI didn't produce results
+    if (!computed || !computed.cancelBy) {
+      if (isTenancyDoc) {
+        computed = { cancelBy: null, renewal: null, notice: null, rollingMonthly: false, note: 'This looks like a tenancy agreement; this MVP supports service contracts. Please enter cancel-by manually.', evidence: { renewal: null, notice: null } };
+      } else {
+        computed = proposeCancelByFromRenewalMinusNotice({ renewalText: renewalCombined, noticeText: noticeCombined });
+      }
+    }
+
+    let cancelBy = computed.cancelBy;
 
     // Store minimal session data in memory via signed token cookie (avoid storing PDF).
     const sessionId = nanoid(16);
